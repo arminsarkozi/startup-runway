@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Startup Runway Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        :root {
+            --app-bg: #f8fafc;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--app-bg);
+            color: #0f172a;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        @media (max-width: 767px) or (orientation: portrait) {
+            body { overflow-y: auto; height: auto; }
+            .app-container { height: auto !important; overflow: visible !important; }
+            .main-content-grid { display: flex !important; flex-direction: column !important; }
+        }
+
+        @media (min-width: 768px) and (orientation: landscape) {
+            .app-container {
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+            }
+            .main-content-grid {
+                flex: 1;
+                display: grid !important;
+                grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+                gap: 0.75rem;
+                min-height: 0;
+                margin-bottom: 0.75rem;
+            }
+            aside {
+                grid-column: span 4 !important;
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                min-height: 0;
+            }
+            main {
+                grid-column: span 8 !important;
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                min-height: 0;
+            }
+        }
+
+        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        .app-container {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 0.75rem;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 0.75rem;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.65rem;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding-left: 0.5rem;
+            transition: all 0.2s;
+            position: relative;
+        }
+        
+        .input-wrapper:focus-within {
+            border-color: #6366f1;
+            background: white;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+        }
+
+        .input-wrapper input, .input-wrapper select {
+            background: transparent;
+            border: none;
+            outline: none;
+            padding: 0.4rem 0.5rem;
+            width: 100%;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #1e293b;
+        }
+
+        /* Value overlay for export to prevent cropping */
+        .value-overlay {
+            display: none;
+            position: absolute;
+            left: 0.5rem;
+            right: 0.5rem;
+            padding: 0.4rem 0.5rem;
+            font-weight: 700;
+            font-size: 0.85rem;
+            color: #1e293b;
+            background: inherit;
+            pointer-events: none;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .metric-card {
+            border-radius: 12px;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: #e2e8f0;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #6366f1;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .scroll-area {
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+        }
+        
+        .scroll-area::-webkit-scrollbar { width: 4px; }
+        .scroll-area::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+
+        .chart-maximized {
+            position: fixed !important;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 50;
+            width: 100vw; height: 100vh;
+            margin: 0 !important;
+            border-radius: 0 !important;
+        }
+
+        .sidebar-expanded #eventsCard {
+            flex-grow: 1;
+        }
+        .hidden-card {
+            display: none !important;
+        }
+
+        /* Export specific styling */
+        #main-app.exporting {
+            height: auto !important;
+            width: 1200px !important;
+            overflow: visible !important;
+            padding: 40px !important; 
+            background-color: #f8fafc !important;
+        }
+        
+        #main-app.exporting input, 
+        #main-app.exporting select {
+            color: transparent !important;
+        }
+        
+        #main-app.exporting .value-overlay {
+            display: block !important;
+            color: #1e293b !important;
+        }
+
+        #main-app.exporting .main-content-grid {
+            display: grid !important;
+            grid-template-columns: repeat(12, 1fr) !important;
+            min-height: auto !important;
+        }
+        
+        #main-app.exporting .scroll-area {
+            overflow: visible !important;
+            max-height: none !important;
+        }
+
+        #main-app.exporting .export-hide {
+            display: none !important;
+        }
+
+        /* Fix for cropped numbers in metrics during export */
+        #main-app.exporting .metric-value-wrapper {
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+            overflow: visible !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-app" class="app-container">
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-3 shrink-0">
+            <div>
+                <h1 class="text-xl font-black text-slate-900 leading-none">Runway Visualizer</h1>
+                <p class="text-slate-400 text-[10px] uppercase font-bold tracking-widest mt-1">Startup Scenario Planning</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="resetToDefaults()" class="text-slate-400 hover:text-red-500 text-[10px] font-bold px-2 transition-all export-hide">Reset All</button>
+                <div class="input-wrapper !bg-white border-slate-200">
+                    <div class="value-overlay !left-1" id="val_currencySelect"></div>
+                    <select id="currencySelect" class="bg-transparent border-none outline-none p-1 text-[11px] font-bold w-24">
+                        <option value="$">USD ($)</option>
+                        <option value="€">EUR (€)</option>
+                        <option value="£">GBP (£)</option>
+                        <option value="Ft">HUF (Ft)</option>
+                    </select>
+                </div>
+                <button onclick="exportAsPNG()" class="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold hover:bg-slate-800 transition-all export-hide">Export PNG</button>
+            </div>
+        </header>
+
+        <div class="main-content-grid">
+            <!-- Sidebar (Inputs) -->
+            <aside id="appSidebar">
+                <!-- Core Financials -->
+                <div class="card shadow-sm space-y-3 sidebar-toggle-card">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="input-label">Initial Cash</label>
+                            <div class="input-wrapper">
+                                <span class="currency-label text-slate-400 font-bold text-[11px]">$</span>
+                                <div class="value-overlay !left-6" id="val_cashOnHand"></div>
+                                <input type="number" id="cashOnHand" value="450000">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="input-label">Start Date</label>
+                            <div class="input-wrapper">
+                                <div class="value-overlay !left-1" id="val_startDate"></div>
+                                <input type="month" id="startDate" class="!px-1 !text-[11px]">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="input-label">Base Burn</label>
+                            <div class="input-wrapper">
+                                <span class="currency-label text-slate-400 font-bold text-[11px]">$</span>
+                                <div class="value-overlay !left-6" id="val_monthlyBurn"></div>
+                                <input type="number" id="monthlyBurn" value="35000">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="input-label">Avg Salary</label>
+                            <div class="input-wrapper">
+                                <span class="currency-label text-slate-400 font-bold text-[11px]">$</span>
+                                <div class="value-overlay !left-6" id="val_avgSalary"></div>
+                                <input type="number" id="avgSalary" value="8000">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Growth -->
+                <div class="card shadow-sm bg-emerald-50 border-emerald-100 sidebar-toggle-card">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="input-label text-emerald-900 mb-0">MRR & Growth</label>
+                        <span id="revenueDisplay" class="mono text-[10px] px-2 py-1 rounded bg-emerald-600 text-white font-bold">$0</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="input-wrapper bg-white">
+                            <span class="currency-label text-slate-400 font-bold text-[10px]">$</span>
+                            <div class="value-overlay !left-5" id="val_startingMRR"></div>
+                            <input type="number" id="startingMRR" value="5000">
+                        </div>
+                        <div class="input-wrapper bg-white">
+                            <div class="value-overlay !left-1" id="val_mrrGrowth"></div>
+                            <input type="number" id="mrrGrowth" value="10">
+                            <span class="text-[10px] pr-2 font-bold text-slate-400">%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hiring -->
+                <div class="card shadow-sm bg-indigo-50 border-indigo-100 sidebar-toggle-card">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="input-label text-indigo-900 mb-0">Hiring Plan</label>
+                        <span id="staffCountDisplay" class="mono text-[10px] px-2 py-1 rounded bg-indigo-600 text-white font-bold">0</span>
+                    </div>
+                    <div class="px-1">
+                        <input type="range" id="staffAdjust" min="-10" max="15" value="0" step="1" class="mb-1">
+                        <div class="flex justify-between text-[8px] font-black text-indigo-300 uppercase">
+                            <span>Cut 10</span>
+                            <span>Current</span>
+                            <span>Hire 15</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Events & Inflows -->
+                <!-- Added export-hide class to hide this card from PNG export -->
+                <div id="eventsCard" class="card shadow-sm flex flex-col flex-grow min-h-0 border-indigo-200 transition-all duration-300 export-hide">
+                    <div class="flex justify-between items-center mb-3 shrink-0">
+                        <label class="input-label mb-0 text-indigo-600">Events & Inflows</label>
+                        <div class="flex items-center gap-2">
+                            <button onclick="addMilestone()" class="text-[10px] px-3 py-1 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all export-hide">+ Add</button>
+                            <button id="maximizeEventsBtn" onclick="toggleSidebarExpansion()" class="p-1 hover:bg-slate-100 rounded border border-slate-200 transition-colors export-hide" title="Focus Inflows">
+                                <svg id="sidebarExpandIcon" class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="milestoneList" class="space-y-2 scroll-area flex-grow pr-2">
+                        <!-- Items injected here -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Dashboard (Metrics + Chart) -->
+            <main class="space-y-3">
+                <div class="grid grid-cols-3 gap-3 shrink-0">
+                    <div class="metric-card border-l-4 border-l-indigo-600 h-24">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Runway</p>
+                        <div class="flex items-baseline gap-1 metric-value-wrapper">
+                            <span id="runwayMonths" class="text-4xl font-black text-slate-900">--</span>
+                            <span class="text-slate-400 font-bold text-sm uppercase">Months</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card h-24">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Monthly Net Burn</p>
+                        <div class="flex items-baseline gap-1 overflow-hidden metric-value-wrapper">
+                            <span class="currency-label text-sm font-bold text-slate-400">$</span>
+                            <span id="adjustedBurnDisplay" class="text-2xl lg:text-3xl font-bold text-slate-800 mono">0</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card border-l-4 border-l-emerald-500 h-24 bg-slate-900">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Rec. Raise (24m)</p>
+                        <div class="flex items-baseline gap-1 overflow-hidden metric-value-wrapper">
+                            <span class="currency-label text-sm font-bold text-emerald-500">$</span>
+                            <span id="recommendedRaise" class="text-xl lg:text-2xl font-bold text-white mono">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="chartContainer" class="card flex-grow shadow-sm flex flex-col min-h-0 relative">
+                    <div class="flex justify-between items-center mb-3 shrink-0">
+                        <h3 class="text-[11px] font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                            24-Month Forecast
+                            <span class="text-[9px] text-indigo-500 normal-case font-medium bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 export-hide">• Click chart to add inflow</span>
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <div class="hidden md:flex gap-4 text-[9px] font-bold uppercase text-slate-400 mr-2">
+                                <div class="flex items-center gap-1.5"><span class="w-3 h-1 bg-indigo-600 rounded-full"></span> Cash</div>
+                                <div class="flex items-center gap-1.5"><span class="w-3 h-1 border-t-2 border-dashed border-emerald-500"></span> MRR</div>
+                            </div>
+                            <button onclick="toggleMaximizeChart()" class="p-1.5 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 export-hide" title="Toggle Fullscreen">
+                                <svg id="maximizeIcon" class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="relative flex-grow min-h-0 cursor-crosshair">
+                        <canvas id="runwayChart"></canvas>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'runway_visualizer_v11_export_pro'; 
+        
+        const inputs = ['cashOnHand', 'monthlyBurn', 'avgSalary', 'staffAdjust', 'startDate', 'startingMRR', 'mrrGrowth', 'currencySelect'];
+        const elements = {};
+        inputs.forEach(id => elements[id] = document.getElementById(id));
+        
+        const milestoneList = document.getElementById('milestoneList');
+        const runwayMonthsEl = document.getElementById('runwayMonths');
+        const adjustedBurnDisplay = document.getElementById('adjustedBurnDisplay');
+        const recommendedRaiseEl = document.getElementById('recommendedRaise');
+
+        const DEFAULT_VALUES = { cash: 450000, burn: 35000, salary: 8000, staff: 0, currency: '$', mrr: 5000, growth: 10 };
+        const now = new Date();
+        const defaultStartMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        let chart = null;
+        let activeCurrency = '$';
+
+        function formatValue(v) {
+            const absV = Math.abs(v);
+            if (activeCurrency === 'Ft') {
+                if (absV >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+                if (absV >= 1000) return (v / 1000).toFixed(0) + 'k';
+            } else {
+                if (absV >= 1000000) return (v / 1000000).toFixed(1) + 'm';
+                if (absV >= 1000) return (v / 1000).toFixed(0) + 'k';
+            }
+            return v;
+        }
+
+        function calculate() {
+            activeCurrency = elements.currencySelect.value;
+            document.querySelectorAll('.currency-label').forEach(el => el.textContent = activeCurrency);
+
+            const cash = parseFloat(elements.cashOnHand.value) || 0;
+            const baseBurn = parseFloat(elements.monthlyBurn.value) || 0;
+            const avgSalary = parseFloat(elements.avgSalary.value) || 0;
+            const staffAdjustment = parseInt(elements.staffAdjust.value) || 0;
+            const startMRR = parseFloat(elements.startingMRR.value) || 0;
+            const monthlyGrowth = (parseFloat(elements.mrrGrowth.value) || 0) / 100;
+
+            const totalMonthlyExpense = baseBurn + (staffAdjustment * avgSalary);
+            const startNetBurn = totalMonthlyExpense - startMRR;
+            const startStr = elements.startDate.value;
+            
+            const milestones = Array.from(document.querySelectorAll('#milestoneList > div')).map(div => ({
+                amount: (parseFloat(div.querySelector('.milestone-amount').value) || 0) * ((parseFloat(div.querySelector('.milestone-prob').value) || 0) / 100),
+                month: parseInt(div.querySelector('.milestone-month').value) || 0,
+                isRecurring: div.querySelector('.milestone-recurring').checked
+            }));
+
+            // Update value overlays for export
+            inputs.forEach(id => {
+                const overlay = document.getElementById('val_' + id);
+                if (overlay) {
+                    if (id === 'currencySelect') {
+                        overlay.textContent = elements[id].options[elements[id].selectedIndex].text;
+                    } else if (id === 'startDate') {
+                        overlay.textContent = elements[id].value || 'YYYY-MM';
+                    } else {
+                        overlay.textContent = elements[id].value;
+                    }
+                }
+            });
+
+            document.getElementById('staffCountDisplay').textContent = staffAdjustment >= 0 ? `+${staffAdjustment} Staff` : `${staffAdjustment} Staff`;
+            
+            const revVal = Math.round(startMRR);
+            document.getElementById('revenueDisplay').textContent = activeCurrency + (revVal > 999999 ? (revVal/1000000).toFixed(1) + 'M' : revVal.toLocaleString());
+            
+            adjustedBurnDisplay.textContent = Math.round(startNetBurn).toLocaleString();
+            
+            let currentCash = cash;
+            let currentMRR = startMRR;
+            let monthsToZero = 0;
+            let cashAt24 = cash;
+
+            for (let m = 1; m <= 60; m++) {
+                let monthlyInflow = 0;
+                milestones.forEach(ms => {
+                    if (ms.isRecurring && m >= ms.month) monthlyInflow += ms.amount;
+                    else if (!ms.isRecurring && m === ms.month) monthlyInflow += ms.amount;
+                });
+                currentMRR *= (1 + monthlyGrowth);
+                currentCash = currentCash + currentMRR + monthlyInflow - totalMonthlyExpense;
+                
+                if (m === 24) cashAt24 = currentCash;
+                if (currentCash <= 0 && monthsToZero === 0) monthsToZero = m;
+            }
+
+            runwayMonthsEl.textContent = monthsToZero === 0 ? '60+' : monthsToZero;
+            recommendedRaiseEl.textContent = Math.round(cashAt24 < 0 ? Math.abs(cashAt24) : 0).toLocaleString();
+
+            updateChart(cash, totalMonthlyExpense, startMRR, monthlyGrowth, milestones, startStr);
+            saveData();
+        }
+
+        function addMilestone(month = 3, name = "New Inflow", amount = "50000", recurring = false, prob = 100) {
+            const div = document.createElement('div');
+            div.className = "bg-white p-3 rounded-xl border border-slate-200 shadow-sm hover:border-indigo-300 transition-all milestone-item relative overflow-hidden";
+            div.innerHTML = `
+                <div class="flex gap-2 items-center mb-2">
+                    <div class="value-overlay !static !p-0 flex-grow" id="val_ms_name_${Date.now()}">${name}</div>
+                    <input type="text" value="${name}" class="text-[10px] font-bold bg-transparent outline-none w-full milestone-name text-slate-700" placeholder="Event name">
+                    <button onclick="this.parentElement.parentElement.remove(); calculate();" class="text-slate-300 hover:text-red-500 transition-colors export-hide">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <div class="flex items-center bg-slate-50 border rounded-lg px-2 py-1 relative">
+                        <span class="text-[10px] text-slate-400 font-bold mr-1">${activeCurrency}</span>
+                        <div class="value-overlay !left-5" style="display:none">${amount}</div>
+                        <input type="number" value="${amount}" class="w-full text-xs font-bold bg-transparent outline-none milestone-amount">
+                    </div>
+                    <div class="flex items-center bg-slate-50 border rounded-lg px-2 py-1 relative">
+                        <span class="text-[10px] text-slate-400 font-bold mr-1">M</span>
+                        <div class="value-overlay !left-5" style="display:none">${month}</div>
+                        <input type="number" value="${month}" class="w-full text-xs font-bold bg-transparent outline-none milestone-month">
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center bg-slate-50 border rounded-lg px-2 py-1 w-24 relative">
+                        <div class="value-overlay !left-1" style="display:none">${prob}</div>
+                        <input type="number" value="${prob}" class="w-full text-xs font-bold bg-transparent outline-none milestone-prob" min="0" max="100">
+                        <span class="text-[10px] text-slate-400 font-bold">%</span>
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" class="milestone-recurring scale-100 accent-indigo-600 rounded" ${recurring ? 'checked' : ''} onchange="calculate()">
+                        <span class="text-[9px] font-extrabold text-slate-500 uppercase tracking-tight">Recurring</span>
+                    </label>
+                </div>
+            `;
+            milestoneList.prepend(div); 
+            div.querySelectorAll('input').forEach(i => i.addEventListener('input', (e) => {
+                const overlay = e.target.previousElementSibling;
+                if (overlay && overlay.classList.contains('value-overlay')) overlay.textContent = e.target.value;
+                calculate();
+            }));
+            
+            // Sync initial overlays for newly added items
+            div.querySelectorAll('input').forEach(i => {
+                const overlay = i.previousElementSibling;
+                if (overlay && overlay.classList.contains('value-overlay')) overlay.textContent = i.value;
+            });
+
+            calculate();
+        }
+
+        function updateChart(cash, totalExpense, startMRR, growth, milestones, startStr) {
+            const labels = []; const cashData = []; const mrrData = [];
+            const startDate = startStr ? new Date(startStr + '-01') : new Date();
+            let cCash = cash, cMRR = startMRR;
+            for (let i = 0; i <= 24; i++) {
+                const date = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
+                labels.push(date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+                if (i > 0) {
+                    let inflow = 0;
+                    milestones.forEach(ms => { if ((ms.isRecurring && i >= ms.month) || (!ms.isRecurring && i === ms.month)) inflow += ms.amount; });
+                    cMRR *= (1 + growth);
+                    cCash = Math.max(0, cCash + cMRR + inflow - totalExpense);
+                }
+                cashData.push(cCash); mrrData.push(cMRR);
+            }
+            if (chart) {
+                chart.data.labels = labels; 
+                chart.data.datasets[0].data = cashData; 
+                chart.data.datasets[1].data = mrrData; 
+                chart.update('none');
+            } else {
+                chart = new Chart(document.getElementById('runwayChart'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            { label: 'Cash', data: cashData, borderColor: '#6366f1', borderWidth: 3, pointRadius: 4, pointBackgroundColor: '#fff', pointHoverRadius: 6, tension: 0.2, fill: true, backgroundColor: 'rgba(99, 102, 241, 0.05)' },
+                            { label: 'MRR', data: mrrData, borderColor: '#10b981', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.2 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        onClick: (e) => {
+                            const points = chart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+                            if (points.length > 0) {
+                                const index = points[0].index;
+                                addMilestone(index, `Inflow M${index}`, 25000);
+                            }
+                        },
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                enabled: true, mode: 'index', intersect: false, 
+                                titleFont: { size: 12, weight: 'bold' }, bodyFont: { size: 11 },
+                                padding: 10, cornerRadius: 8
+                            } 
+                        },
+                        scales: {
+                            y: { 
+                                grid: { color: '#f1f5f9' },
+                                ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8', callback: v => activeCurrency + formatValue(v) } 
+                            },
+                            x: { 
+                                grid: { display: false },
+                                ticks: { font: { size: 10, weight: '600' }, color: '#94a3b8', maxTicksLimit: 12 } 
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function toggleMaximizeChart() {
+            const container = document.getElementById('chartContainer');
+            const icon = document.getElementById('maximizeIcon');
+            const isMaximized = container.classList.toggle('chart-maximized');
+            icon.innerHTML = isMaximized ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>' : '<svg id="maximizeIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>';
+            setTimeout(() => chart.resize(), 100);
+        }
+
+        async function exportAsPNG() {
+            calculate(); // Ensure values are synced
+            const app = document.getElementById('main-app');
+            app.classList.add('exporting');
+            
+            // Short delay to allow layout re-flow and high-res chart redraw
+            await new Promise(r => setTimeout(r, 400));
+            chart.resize();
+
+            html2canvas(app, {
+                backgroundColor: '#f8fafc',
+                scale: 2.5, // High resolution
+                useCORS: true,
+                logging: false,
+                windowWidth: 1200,
+                onclone: (clonedDoc) => {
+                    // Ensure overlays in clone are showing
+                    clonedDoc.querySelectorAll('.value-overlay').forEach(ov => ov.style.display = 'block');
+                }
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `Runway-Forecast-${new Date().toISOString().split('T')[0]}.png`;
+                link.href = canvas.toDataURL('image/png', 1.0);
+                link.click();
+                
+                app.classList.remove('exporting');
+                chart.resize();
+            });
+        }
+
+        function toggleSidebarExpansion() {
+            const sidebar = document.getElementById('appSidebar');
+            const icon = document.getElementById('sidebarExpandIcon');
+            const cards = document.querySelectorAll('.sidebar-toggle-card');
+            sidebar.classList.toggle('sidebar-expanded');
+            const expanded = sidebar.classList.contains('sidebar-expanded');
+            cards.forEach(c => c.classList.toggle('hidden-card', expanded));
+            icon.innerHTML = expanded ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>';
+        }
+
+        function saveData() {
+            const m = Array.from(document.querySelectorAll('#milestoneList > div')).map(div => ({
+                name: div.querySelector('.milestone-name').value,
+                amount: div.querySelector('.milestone-amount').value,
+                month: div.querySelector('.milestone-month').value,
+                isRecurring: div.querySelector('.milestone-recurring').checked,
+                prob: div.querySelector('.milestone-prob').value
+            }));
+            const data = { milestones: m };
+            inputs.forEach(id => data[id] = elements[id].value);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        }
+
+        function loadData() {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) { elements.startDate.value = defaultStartMonth; return; }
+            const data = JSON.parse(raw);
+            inputs.forEach(id => {
+                if (data[id] !== undefined) elements[id].value = data[id];
+            });
+            if (data.milestones) data.milestones.reverse().forEach(m => addMilestone(m.month, m.name, m.amount, m.isRecurring, m.prob));
+        }
+
+        function resetToDefaults() {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+
+        window.onload = () => { loadData(); calculate(); };
+        inputs.forEach(id => elements[id].addEventListener('input', calculate));
+    </script>
+</body>
+</html>
