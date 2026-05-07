@@ -293,22 +293,34 @@
                     </div>
                 </div>
 
-                <!-- Growth -->
+                <!-- Compact Growth Section -->
                 <div class="card shadow-sm bg-emerald-50 border-emerald-100 sidebar-toggle-card">
                     <div class="flex justify-between items-center mb-2">
                         <label class="input-label text-emerald-900 mb-0">MRR & Growth</label>
                         <span id="revenueDisplay" class="mono text-[10px] px-2 py-1 rounded bg-emerald-600 text-white font-bold">$0</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="input-wrapper bg-white">
-                            <span class="currency-label text-slate-400 font-bold text-[10px]">$</span>
-                            <div class="value-overlay !left-5" id="val_startingMRR"></div>
-                            <input type="number" id="startingMRR" value="5000">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="input-label text-emerald-700 !text-[8px]">Base MRR</label>
+                            <div class="input-wrapper bg-white !pl-1.5">
+                                <span class="currency-label text-slate-400 font-bold text-[9px]">$</span>
+                                <div class="value-overlay !left-4" id="val_startingMRR"></div>
+                                <input type="number" id="startingMRR" value="5000" class="!px-1 !text-[10px]">
+                            </div>
                         </div>
-                        <div class="input-wrapper bg-white">
-                            <div class="value-overlay !left-1" id="val_mrrGrowth"></div>
-                            <input type="number" id="mrrGrowth" value="10">
-                            <span class="text-[10px] pr-2 font-bold text-slate-400">%</span>
+                        <div>
+                            <label class="input-label text-emerald-700 !text-[8px]">Growth %</label>
+                            <div class="input-wrapper bg-white !pl-1.5">
+                                <div class="value-overlay !left-1" id="val_mrrGrowth"></div>
+                                <input type="number" id="mrrGrowth" value="10" class="!px-1 !text-[10px]">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="input-label text-emerald-700 !text-[8px]">Starts M#</label>
+                            <div class="input-wrapper bg-white !pl-1.5">
+                                <div class="value-overlay !left-1" id="val_revenueStartMonth"></div>
+                                <input type="number" id="revenueStartMonth" value="1" min="1" max="60" class="!px-1 !text-[10px]">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -330,7 +342,6 @@
                 </div>
 
                 <!-- Events & Inflows -->
-                <!-- Added export-hide class to hide this card from PNG export -->
                 <div id="eventsCard" class="card shadow-sm flex flex-col flex-grow min-h-0 border-indigo-200 transition-all duration-300 export-hide">
                     <div class="flex justify-between items-center mb-3 shrink-0">
                         <label class="input-label mb-0 text-indigo-600">Events & Inflows</label>
@@ -400,9 +411,9 @@
     </div>
 
     <script>
-        const STORAGE_KEY = 'runway_visualizer_v11_export_pro'; 
+        const STORAGE_KEY = 'runway_visualizer_v12_revenue_start'; 
         
-        const inputs = ['cashOnHand', 'monthlyBurn', 'avgSalary', 'staffAdjust', 'startDate', 'startingMRR', 'mrrGrowth', 'currencySelect'];
+        const inputs = ['cashOnHand', 'monthlyBurn', 'avgSalary', 'staffAdjust', 'startDate', 'startingMRR', 'mrrGrowth', 'currencySelect', 'revenueStartMonth'];
         const elements = {};
         inputs.forEach(id => elements[id] = document.getElementById(id));
         
@@ -411,7 +422,7 @@
         const adjustedBurnDisplay = document.getElementById('adjustedBurnDisplay');
         const recommendedRaiseEl = document.getElementById('recommendedRaise');
 
-        const DEFAULT_VALUES = { cash: 450000, burn: 35000, salary: 8000, staff: 0, currency: '$', mrr: 5000, growth: 10 };
+        const DEFAULT_VALUES = { cash: 450000, burn: 35000, salary: 8000, staff: 0, currency: '$', mrr: 5000, growth: 10, revStart: 1 };
         const now = new Date();
         const defaultStartMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
@@ -440,9 +451,11 @@
             const staffAdjustment = parseInt(elements.staffAdjust.value) || 0;
             const startMRR = parseFloat(elements.startingMRR.value) || 0;
             const monthlyGrowth = (parseFloat(elements.mrrGrowth.value) || 0) / 100;
+            const revStartMonth = parseInt(elements.revenueStartMonth.value) || 1;
 
             const totalMonthlyExpense = baseBurn + (staffAdjustment * avgSalary);
-            const startNetBurn = totalMonthlyExpense - startMRR;
+            const effectiveStartMRR = revStartMonth <= 1 ? startMRR : 0;
+            const startNetBurn = totalMonthlyExpense - effectiveStartMRR;
             const startStr = elements.startDate.value;
             
             const milestones = Array.from(document.querySelectorAll('#milestoneList > div')).map(div => ({
@@ -451,7 +464,6 @@
                 isRecurring: div.querySelector('.milestone-recurring').checked
             }));
 
-            // Update value overlays for export
             inputs.forEach(id => {
                 const overlay = document.getElementById('val_' + id);
                 if (overlay) {
@@ -467,13 +479,13 @@
 
             document.getElementById('staffCountDisplay').textContent = staffAdjustment >= 0 ? `+${staffAdjustment} Staff` : `${staffAdjustment} Staff`;
             
-            const revVal = Math.round(startMRR);
-            document.getElementById('revenueDisplay').textContent = activeCurrency + (revVal > 999999 ? (revVal/1000000).toFixed(1) + 'M' : revVal.toLocaleString());
+            const revValDisplay = Math.round(effectiveStartMRR);
+            document.getElementById('revenueDisplay').textContent = activeCurrency + (revValDisplay > 999999 ? (revValDisplay/1000000).toFixed(1) + 'M' : revValDisplay.toLocaleString());
             
             adjustedBurnDisplay.textContent = Math.round(startNetBurn).toLocaleString();
             
             let currentCash = cash;
-            let currentMRR = startMRR;
+            let currentMRR = 0; 
             let monthsToZero = 0;
             let cashAt24 = cash;
 
@@ -483,7 +495,15 @@
                     if (ms.isRecurring && m >= ms.month) monthlyInflow += ms.amount;
                     else if (!ms.isRecurring && m === ms.month) monthlyInflow += ms.amount;
                 });
-                currentMRR *= (1 + monthlyGrowth);
+
+                if (m === revStartMonth) {
+                    currentMRR = startMRR;
+                } else if (m > revStartMonth) {
+                    currentMRR *= (1 + monthlyGrowth);
+                } else {
+                    currentMRR = 0;
+                }
+
                 currentCash = currentCash + currentMRR + monthlyInflow - totalMonthlyExpense;
                 
                 if (m === 24) cashAt24 = currentCash;
@@ -493,7 +513,7 @@
             runwayMonthsEl.textContent = monthsToZero === 0 ? '60+' : monthsToZero;
             recommendedRaiseEl.textContent = Math.round(cashAt24 < 0 ? Math.abs(cashAt24) : 0).toLocaleString();
 
-            updateChart(cash, totalMonthlyExpense, startMRR, monthlyGrowth, milestones, startStr);
+            updateChart(cash, totalMonthlyExpense, startMRR, monthlyGrowth, revStartMonth, milestones, startStr);
             saveData();
         }
 
@@ -539,7 +559,6 @@
                 calculate();
             }));
             
-            // Sync initial overlays for newly added items
             div.querySelectorAll('input').forEach(i => {
                 const overlay = i.previousElementSibling;
                 if (overlay && overlay.classList.contains('value-overlay')) overlay.textContent = i.value;
@@ -548,21 +567,36 @@
             calculate();
         }
 
-        function updateChart(cash, totalExpense, startMRR, growth, milestones, startStr) {
+        function updateChart(cash, totalExpense, startMRR, growth, revStartMonth, milestones, startStr) {
             const labels = []; const cashData = []; const mrrData = [];
             const startDate = startStr ? new Date(startStr + '-01') : new Date();
-            let cCash = cash, cMRR = startMRR;
+            let cCash = cash, cMRR = 0;
+
             for (let i = 0; i <= 24; i++) {
                 const date = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1);
                 labels.push(date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+                
                 if (i > 0) {
                     let inflow = 0;
                     milestones.forEach(ms => { if ((ms.isRecurring && i >= ms.month) || (!ms.isRecurring && i === ms.month)) inflow += ms.amount; });
-                    cMRR *= (1 + growth);
+                    
+                    if (i === revStartMonth) {
+                        cMRR = startMRR;
+                    } else if (i > revStartMonth) {
+                        cMRR *= (1 + growth);
+                    } else {
+                        cMRR = 0;
+                    }
+
                     cCash = Math.max(0, cCash + cMRR + inflow - totalExpense);
+                } else {
+                    cMRR = revStartMonth <= 0 ? startMRR : 0;
                 }
-                cashData.push(cCash); mrrData.push(cMRR);
+                
+                cashData.push(cCash); 
+                mrrData.push(cMRR);
             }
+
             if (chart) {
                 chart.data.labels = labels; 
                 chart.data.datasets[0].data = cashData; 
@@ -619,22 +653,19 @@
         }
 
         async function exportAsPNG() {
-            calculate(); // Ensure values are synced
+            calculate();
             const app = document.getElementById('main-app');
             app.classList.add('exporting');
-            
-            // Short delay to allow layout re-flow and high-res chart redraw
             await new Promise(r => setTimeout(r, 400));
             chart.resize();
 
             html2canvas(app, {
                 backgroundColor: '#f8fafc',
-                scale: 2.5, // High resolution
+                scale: 2.5,
                 useCORS: true,
                 logging: false,
                 windowWidth: 1200,
                 onclone: (clonedDoc) => {
-                    // Ensure overlays in clone are showing
                     clonedDoc.querySelectorAll('.value-overlay').forEach(ov => ov.style.display = 'block');
                 }
             }).then(canvas => {
@@ -642,7 +673,6 @@
                 link.download = `Runway-Forecast-${new Date().toISOString().split('T')[0]}.png`;
                 link.href = canvas.toDataURL('image/png', 1.0);
                 link.click();
-                
                 app.classList.remove('exporting');
                 chart.resize();
             });
