@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         
@@ -247,7 +248,10 @@
                         <option value="Ft">HUF (Ft)</option>
                     </select>
                 </div>
-                <button onclick="exportAsPNG()" class="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold hover:bg-slate-800 transition-all export-hide">Export PNG</button>
+                <div class="flex gap-1 export-hide">
+                    <button onclick="exportAsPNG()" class="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold hover:bg-slate-300 transition-all">PNG</button>
+                    <button onclick="exportAsPDF()" class="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold hover:bg-slate-800 transition-all">Export PDF</button>
+                </div>
             </div>
         </header>
 
@@ -676,6 +680,150 @@
                 app.classList.remove('exporting');
                 chart.resize();
             });
+        }
+
+        async function exportAsPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            
+            // Gather current state data
+            const runway = runwayMonthsEl.textContent;
+            const burn = adjustedBurnDisplay.textContent;
+            const raise = recommendedRaiseEl.textContent;
+            const cash = elements.cashOnHand.value;
+            const mrr = elements.startingMRR.value;
+            const growth = elements.mrrGrowth.value;
+            const staff = elements.staffAdjust.value;
+            const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            // --- PAGE 1: TITLE PAGE ---
+            doc.setFillColor(15, 23, 42); // slate-900
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+            
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(36);
+            doc.text('Financial Board Deck', 20, 80);
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(16);
+            doc.setTextColor(148, 163, 184); // slate-400
+            doc.text('Startup Scenario Planning & Runway Forecast', 20, 95);
+            
+            doc.setDrawColor(99, 102, 241); // indigo-500
+            doc.setLineWidth(2);
+            doc.line(20, 110, 60, 110);
+            
+            doc.setFontSize(12);
+            doc.setTextColor(255, 255, 255);
+            doc.text(`Generated on: ${dateStr}`, 20, pageHeight - 30);
+            doc.text('Proprietary and Confidential', 20, pageHeight - 20);
+
+            // --- PAGE 2: EXECUTIVE SUMMARY ---
+            doc.addPage();
+            doc.setTextColor(15, 23, 42);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(24);
+            doc.text('Financial Executive Summary', 20, 30);
+            
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'normal');
+            let summaryText = `As of this forecast, the company maintains a cash position of ${activeCurrency}${parseFloat(cash).toLocaleString()}. `;
+            summaryText += `Based on current operational plans, including a team adjustment of ${staff} members, the monthly net burn rate is approximately ${activeCurrency}${burn}. `;
+            summaryText += `This results in a total projected runway of ${runway} months.`;
+            
+            const splitSummary = doc.splitTextToSize(summaryText, pageWidth - 40);
+            doc.text(splitSummary, 20, 50);
+
+            // Key Metrics Grid
+            doc.setDrawColor(226, 232, 240); // slate-200
+            doc.setFillColor(248, 250, 252); // slate-50
+            doc.roundedRect(20, 80, pageWidth - 40, 40, 3, 3, 'FD');
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.text('RUNWAY STATUS', 30, 95);
+            doc.text('MONTHLY BURN', 95, 95);
+            doc.text('TARGET RAISE', 150, 95);
+            
+            doc.setFontSize(16);
+            doc.setTextColor(15, 23, 42);
+            doc.text(`${runway} Mo`, 30, 110);
+            doc.text(`${activeCurrency}${burn}`, 95, 110);
+            doc.text(`${activeCurrency}${raise}`, 150, 110);
+
+            // Detailed Breakdown
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Revenue & Growth Strategy', 20, 140);
+            
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(51, 65, 85);
+            let growthText = `The current model assumes a Base MRR of ${activeCurrency}${parseFloat(mrr).toLocaleString()} with an aggressive growth target of ${growth}% month-over-month. `;
+            growthText += `Revenue generation is slated to start at Month ${elements.revenueStartMonth.value}. `;
+            growthText += `To maintain a 24-month safety cushion, a recommended capital infusion of ${activeCurrency}${raise} is identified for the upcoming fiscal period.`;
+            
+            const splitGrowth = doc.splitTextToSize(growthText, pageWidth - 40);
+            doc.text(splitGrowth, 20, 155);
+
+            // --- PAGE 3: THE FORECAST ---
+            doc.addPage();
+            doc.setFontSize(24);
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(15, 23, 42);
+            doc.text('24-Month Forecast Visuals', 20, 30);
+
+            // Capture Chart
+            const chartCanvas = document.getElementById('runwayChart');
+            const chartImg = chartCanvas.toDataURL('image/png', 1.0);
+            
+            // Calculate aspect ratio for A4
+            const imgProps = doc.getImageProperties(chartImg);
+            const imgWidth = pageWidth - 40;
+            const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+            
+            doc.addImage(chartImg, 'PNG', 20, 50, imgWidth, imgHeight);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.setFont('helvetica', 'italic');
+            doc.text('*Solid Indigo line represents Cash balance. Dashed Emerald line represents MRR targets.', 20, 50 + imgHeight + 10);
+
+            // Event List
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(15, 23, 42);
+            doc.text('Projected Milestones & Inflows', 20, 50 + imgHeight + 30);
+            
+            let currentY = 50 + imgHeight + 45;
+            const milestones = Array.from(document.querySelectorAll('.milestone-item'));
+            
+            if (milestones.length === 0) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(11);
+                doc.text('No manual inflows or milestones recorded for this period.', 20, currentY);
+            } else {
+                milestones.forEach((m, i) => {
+                    if (currentY > pageHeight - 20) return; // Prevent overflow on simple logic
+                    const name = m.querySelector('.milestone-name').value;
+                    const amt = m.querySelector('.milestone-amount').value;
+                    const mo = m.querySelector('.milestone-month').value;
+                    const prob = m.querySelector('.milestone-prob').value;
+                    const rec = m.querySelector('.milestone-recurring').checked ? '(Recurring)' : '';
+                    
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(`${name}`, 20, currentY);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(`${activeCurrency}${amt} at M${mo} - Prob: ${prob}% ${rec}`, 100, currentY);
+                    currentY += 8;
+                });
+            }
+
+            doc.save(`Financial-Deck-${new Date().toISOString().split('T')[0]}.pdf`);
         }
 
         function toggleSidebarExpansion() {
